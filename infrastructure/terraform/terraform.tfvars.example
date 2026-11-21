@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git-ignored) and adjust. Never commit real secrets.
+project_name = "drivesense"
+environment  = "dev"
+location     = "westeurope"
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+tags = {
+  team = "TeamName"
+}
