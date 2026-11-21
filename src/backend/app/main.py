@@ -11,7 +11,7 @@ from app import __version__
 from app.config import get_settings
 from app.database import engine, init_db, wait_for_database
 from app.errors import register_exception_handlers
-from app.routes import events, health
+from app.routes import events, health, trips
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(events.router)
+    app.include_router(trips.router)
     return app
 
 

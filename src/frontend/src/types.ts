@@ -64,6 +64,7 @@ export interface ScoreDeduction {
 export interface TripDetail extends TripSummary {
   driving_events: DrivingEvent[];
   score_deductions: ScoreDeduction[];
+  samples: SensorEvent[];
 }
 
 export interface HealthResponse {

@@ -48,7 +48,7 @@ export function useDashboardData(limit: number, autoRefreshMs: number | null = n
     const [health, events, trips] = await Promise.allSettled([
       fetchHealth(),
       fetchEvents(limit),
-      fetchTrips(10),
+      fetchTrips(),
     ]);
 
     setState((previous) => ({
@@ -57,7 +57,11 @@ export function useDashboardData(limit: number, autoRefreshMs: number | null = n
       tripsError: trips.status === "rejected" ? describeError(trips.reason) : null,
       error: events.status === "rejected" ? describeError(events.reason) : null,
       connection:
-        health.status === "rejected" ? "offline" : health.value.status === "ok" ? "online" : "degraded",
+        health.status === "rejected"
+          ? "offline"
+          : health.value.status === "ok" && health.value.database === "ok"
+            ? "online"
+            : "degraded",
       apiVersion: health.status === "fulfilled" ? health.value.version : previous.apiVersion,
       isLoading: false,
       lastUpdated: events.status === "fulfilled" ? new Date() : previous.lastUpdated,

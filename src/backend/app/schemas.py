@@ -92,6 +92,53 @@ class EventListResponse(BaseModel):
     events: list[SensorEventRead] = Field(description="Events, newest timestamp first.")
 
 
+class TripSummary(BaseModel):
+    """Summary derived from all sensor samples in one session."""
+
+    session_id: str
+    device_id: str
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: float
+    event_count: int
+    max_speed_mps: float
+    avg_speed_mps: float
+    harsh_braking_count: int
+    harsh_acceleration_count: int
+    smoothness_score: int
+
+
+class TripListResponse(BaseModel):
+    """Trip summaries, newest trip first; count is the total number of sessions."""
+
+    count: int
+    trips: list[TripSummary]
+
+
+DrivingEventKind = Literal["harsh_braking", "harsh_acceleration"]
+
+
+class DrivingEvent(BaseModel):
+    kind: DrivingEventKind
+    start: datetime
+    end: datetime
+    peak_acceleration_mps2: float
+    speed_before_mps: float
+    speed_after_mps: float
+
+
+class ScoreDeduction(BaseModel):
+    kind: DrivingEventKind
+    at: datetime
+    points: int
+
+
+class TripDetail(TripSummary):
+    driving_events: list[DrivingEvent]
+    score_deductions: list[ScoreDeduction]
+    samples: list[SensorEventRead]
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     database: Literal["ok", "unavailable"]
