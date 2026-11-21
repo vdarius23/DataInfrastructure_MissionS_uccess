@@ -57,3 +57,26 @@ def get_event_summary(db: Session) -> tuple[int, int, int]:
     )
     total, devices, sessions = db.execute(statement).one()
     return int(total), int(devices), int(sessions)
+
+
+def list_recent_session_ids(db: Session, limit: int) -> list[str]:
+    """Return up to ``limit`` session ids, the one with the newest event first."""
+    statement = (
+        select(SensorEvent.session_id)
+        .group_by(SensorEvent.session_id)
+        .order_by(func.max(SensorEvent.timestamp).desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement))
+
+
+def list_events_for_sessions(db: Session, session_ids: list[str]) -> list[SensorEvent]:
+    """Return all events of the given sessions, oldest first."""
+    if not session_ids:
+        return []
+    statement = (
+        select(SensorEvent)
+        .where(SensorEvent.session_id.in_(session_ids))
+        .order_by(SensorEvent.timestamp, SensorEvent.id)
+    )
+    return list(db.scalars(statement))
