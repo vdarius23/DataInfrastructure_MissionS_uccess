@@ -1,8 +1,6 @@
-"""Database access layer for sensor events.
+"""Database access layer for sensor events and trip sessions.
 
-Route handlers call these functions and never build SQL themselves. Future trip
-processing and driver scoring should add their own repository functions here
-(or in a sibling module) rather than querying inside routes.
+Route handlers and services call these functions and never build SQL themselves.
 """
 
 from sqlalchemy import distinct, func, select
@@ -60,23 +58,33 @@ def get_event_summary(db: Session) -> tuple[int, int, int]:
 
 
 def list_recent_session_ids(db: Session, limit: int) -> list[str]:
-    """Return up to ``limit`` session ids, the one with the newest event first."""
+    """Return session ids ordered by their newest event, newest first."""
     statement = (
         select(SensorEvent.session_id)
         .group_by(SensorEvent.session_id)
-        .order_by(func.max(SensorEvent.timestamp).desc())
+        .order_by(func.max(SensorEvent.timestamp).desc(), func.max(SensorEvent.id).desc())
         .limit(limit)
     )
     return list(db.scalars(statement))
 
 
 def list_events_for_sessions(db: Session, session_ids: list[str]) -> list[SensorEvent]:
-    """Return all events of the given sessions, oldest first."""
+    """Return all events for the supplied sessions, oldest first per session."""
     if not session_ids:
         return []
     statement = (
         select(SensorEvent)
         .where(SensorEvent.session_id.in_(session_ids))
+        .order_by(SensorEvent.session_id, SensorEvent.timestamp, SensorEvent.id)
+    )
+    return list(db.scalars(statement))
+
+
+def list_session_events(db: Session, session_id: str) -> list[SensorEvent]:
+    """Return every sensor sample for one session, in measurement order."""
+    statement = (
+        select(SensorEvent)
+        .where(SensorEvent.session_id == session_id)
         .order_by(SensorEvent.timestamp, SensorEvent.id)
     )
     return list(db.scalars(statement))

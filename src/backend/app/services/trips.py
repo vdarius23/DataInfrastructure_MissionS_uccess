@@ -9,7 +9,13 @@ from app import repository
 from app.models import SensorEvent
 from app.processing.driving_events import detect_driving_events
 from app.processing.scoring import smoothness_score
-from app.schemas import DrivingEventRead, ScoreDeductionRead, TripDetailResponse, TripSummary
+from app.schemas import (
+    DrivingEventRead,
+    ScoreDeductionRead,
+    SensorEventRead,
+    TripDetailResponse,
+    TripSummary,
+)
 
 
 def analyse_trip(session_id: str, events: Sequence[SensorEvent]) -> TripDetailResponse:
@@ -34,6 +40,7 @@ def analyse_trip(session_id: str, events: Sequence[SensorEvent]) -> TripDetailRe
         smoothness_score=score.score,
         driving_events=[DrivingEventRead.model_validate(e) for e in driving_events],
         score_deductions=[ScoreDeductionRead.model_validate(d) for d in score.deductions],
+        samples=[SensorEventRead.model_validate(event) for event in events],
     )
 
 

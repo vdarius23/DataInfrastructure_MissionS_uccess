@@ -75,9 +75,10 @@ export function fetchEvents(limit: number): Promise<EventListResponse> {
   return requestJson<EventListResponse>(`/api/events?limit=${encodeURIComponent(limit)}`);
 }
 
-/** GET /api/trips?limit=N */
-export function fetchTrips(limit: number): Promise<TripListResponse> {
-  return requestJson<TripListResponse>(`/api/trips?limit=${encodeURIComponent(limit)}`);
+/** GET /api/trips, or /api/trips?limit=N when a bounded history is requested. */
+export function fetchTrips(limit?: number): Promise<TripListResponse> {
+  const query = limit === undefined ? "" : `?limit=${encodeURIComponent(limit)}`;
+  return requestJson<TripListResponse>(`/api/trips${query}`);
 }
 
 /** GET /api/trips/{session_id}: one trip with driving events and score deductions. */

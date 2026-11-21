@@ -116,7 +116,7 @@ class ErrorResponse(BaseModel):
     error: ErrorBody
 
 
-# --- Trips (v0.2) ------------------------------------------------------------------------------
+# --- Trips -------------------------------------------------------------------------------------
 
 DrivingEventKind = Literal["harsh_braking", "harsh_acceleration"]
 
@@ -168,3 +168,4 @@ class TripListResponse(BaseModel):
 class TripDetailResponse(TripSummary):
     driving_events: list[DrivingEventRead]
     score_deductions: list[ScoreDeductionRead]
+    samples: list[SensorEventRead]

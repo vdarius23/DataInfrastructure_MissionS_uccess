@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -29,7 +29,10 @@ def list_trips(
     response_model=TripDetailResponse,
     responses={404: {"model": ErrorResponse, "description": "Unknown session_id"}},
 )
-def get_trip(session_id: str, db: DbSession) -> TripDetailResponse:
+def get_trip(
+    session_id: Annotated[str, Path(min_length=1, max_length=64)],
+    db: DbSession,
+) -> TripDetailResponse:
     trip = trip_service.get_trip(db, session_id)
     if trip is None:
         raise ApiError(
