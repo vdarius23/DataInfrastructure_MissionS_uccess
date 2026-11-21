@@ -1,0 +1,7 @@
+# Runtime dependencies for the DriveSense API (Python 3.12).
+# Pinned for reproducible builds. Update deliberately, in a dedicated PR.
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pydantic==2.11.7
+SQLAlchemy==2.0.41
+psycopg[binary]==3.2.9
