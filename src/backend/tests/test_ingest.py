@@ -57,3 +57,10 @@ def test_split_replay_accepts_array_and_json_lines() -> None:
 
     assert len(split_replay(json.dumps(events))) == 2
     assert len(split_replay("\n".join(json.dumps(e) for e in events) + "\n")) == 2
+
+
+def test_split_replay_ignores_a_windows_byte_order_mark() -> None:
+    # What Windows PowerShell pipes in: a BOM, then pretty-printed JSON with CRLF line ends.
+    text = "﻿" + json.dumps([EXAMPLE_EVENT], indent=2).replace("\n", "\r\n")
+
+    assert len(split_replay(text)) == 1
