@@ -1,4 +1,3 @@
-# The phone simulator intentionally uses only the Python standard library
-# (urllib, json, argparse), so it runs on any Python 3.11+ without installing anything.
-#
-# Add third-party packages here only if they become necessary.
+# The simulator streams to Azure IoT Hub over MQTT with Microsoft's device SDK.
+# --dry-run still works without it (standard library only).
+azure-iot-device==2.14.0
