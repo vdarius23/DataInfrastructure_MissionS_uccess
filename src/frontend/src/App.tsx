@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ConnectionIndicator } from "./components/ConnectionIndicator";
 import { EventsTable } from "./components/EventsTable";
 import { ClockIcon, DatabaseIcon, LogoMark, PhoneIcon, RefreshIcon, RouteIcon } from "./components/Icons";
@@ -7,10 +8,12 @@ import { useDashboardData } from "./hooks/useDashboardData";
 import { formatClockTime, formatCount, formatRelativeTime, formatUtcTimestamp } from "./lib/format";
 
 const EVENTS_LIMIT = 50;
+const AUTO_REFRESH_MS = 5000;
 
 export default function App() {
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const { data, connection, apiVersion, isLoading, error, lastUpdated, refresh } =
-    useDashboardData(EVENTS_LIMIT);
+    useDashboardData(EVENTS_LIMIT, autoRefresh ? AUTO_REFRESH_MS : null);
 
   const isInitialLoad = data === null && isLoading;
   const latestEvent = data?.events[0];
@@ -31,6 +34,15 @@ export default function App() {
 
           <div className="flex flex-wrap items-center gap-3">
             <ConnectionIndicator status={connection} version={apiVersion} />
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(event) => setAutoRefresh(event.target.checked)}
+                className="h-4 w-4 accent-teal-400"
+              />
+              Auto-refresh 5s
+            </label>
             <button
               type="button"
               onClick={() => void refresh()}
