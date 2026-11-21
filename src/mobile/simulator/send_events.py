@@ -2,16 +2,21 @@
 """DriveSense phone simulator.
 
 Generates synthetic but realistic GPS + accelerometer events for one short trip and
-sends them to the DriveSense API with HTTP POST requests. No phone hardware needed.
+streams them to Azure IoT Hub over MQTT, exactly like a phone would. No phone hardware needed.
+The DriveSense ingestor reads the stream from IoT Hub and stores the readings.
 
 Nothing is sent until you run this script explicitly:
 
-    python src/mobile/simulator/send_events.py
-    python src/mobile/simulator/send_events.py --api-url http://localhost:8000 --count 10
-    python src/mobile/simulator/send_events.py --dry-run      # print payloads only
+    python src/mobile/simulator/send_events.py              # DRIVESENSE_DEVICE_CONNECTION_STRING
+    python src/mobile/simulator/send_events.py --count 30 --scenario harsh-brake
+    python src/mobile/simulator/send_events.py --dry-run    # print payloads only (no Azure)
+
+The device connection string comes from IoT Hub (az iot hub device-identity connection-string
+show). Each reading's device_id is taken from it, because the ingestor only accepts readings
+whose device_id matches the identity IoT Hub authenticated.
 
 Exit codes: 0 = all events delivered, 1 = at least one event not delivered, 2 = bad arguments.
-Uses only the Python standard library.
+--dry-run uses only the standard library; streaming needs azure-iot-device (requirements.txt).
 """
 
 from __future__ import annotations
@@ -26,9 +31,8 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib import error, parse, request
 
-DEFAULT_API_URL = "http://localhost:8000"
+CONNECTION_STRING_ENV = "DRIVESENSE_DEVICE_CONNECTION_STRING"
 METERS_PER_DEGREE_LAT = 111_320.0
 GRAVITY = 9.81
 SAMPLE_INTERVAL_S = 1.0
@@ -101,55 +105,69 @@ def build_trip_events(
     return events
 
 
-def _read_error_message(exc: error.HTTPError) -> str:
+def parse_connection_string(value: str) -> dict[str, str]:
+    """Split 'HostName=...;DeviceId=...;SharedAccessKey=...' into a dict.
+
+    Keys may contain '=' at the end (base64), so each part is split on the first '=' only.
+    """
+    parts: dict[str, str] = {}
+    for item in value.split(";"):
+        key, separator, part_value = item.partition("=")
+        if separator:
+            parts[key.strip()] = part_value.strip()
+    return parts
+
+
+def stream_events(connection_string: str, events: list[dict[str, Any]], delay: float) -> int:
+    """Send the events over one MQTT connection. Returns how many IoT Hub acknowledged."""
+    from azure.iot.device import IoTHubDeviceClient, Message  # only needed when streaming
+
+    client = IoTHubDeviceClient.create_from_connection_string(connection_string)
     try:
-        body = json.loads(exc.read().decode("utf-8", errors="replace"))
-        err = body["error"]
-        details = "; ".join(f"{d.get('field')}: {d.get('message')}" for d in err.get("details", []))
-        return f"{err['code']}: {err['message']}" + (f" ({details})" if details else "")
-    except (ValueError, KeyError, TypeError, AttributeError):
-        return exc.reason if isinstance(exc.reason, str) else "HTTP error"
+        client.connect()
+    except Exception as exc:  # the SDK raises several error types; all mean "not connected"
+        print(f"Cannot connect to IoT Hub: {exc}", file=sys.stderr)
+        return 0
 
-
-def check_health(api_url: str, timeout: float) -> tuple[bool, str]:
+    delivered = 0
+    width = len(str(len(events)))
     try:
-        with request.urlopen(f"{api_url}/health", timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8"))
-            return True, f"status={body.get('status')} database={body.get('database')}"
-    except error.HTTPError as exc:
-        return False, f"HTTP {exc.code}: {_read_error_message(exc)}"
-    except (error.URLError, TimeoutError, OSError, ValueError) as exc:
-        reason = getattr(exc, "reason", exc)
-        return False, f"cannot connect ({reason})"
-
-
-def send_event(api_url: str, event: dict[str, Any], timeout: float) -> tuple[bool, str]:
-    data = json.dumps(event).encode("utf-8")
-    req = request.Request(
-        f"{api_url}/api/events",
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-    )
-    try:
-        with request.urlopen(req, timeout=timeout) as response:
-            return True, f"HTTP {response.status}"
-    except error.HTTPError as exc:
-        return False, f"HTTP {exc.code} {_read_error_message(exc)}"
-    except (error.URLError, TimeoutError, OSError) as exc:
-        reason = getattr(exc, "reason", exc)
-        return False, f"connection error ({reason})"
+        for number, event in enumerate(events, start=1):
+            message = Message(json.dumps(event))
+            message.content_type = "application/json"
+            message.content_encoding = "utf-8"
+            message.message_id = event["event_id"]
+            try:
+                client.send_message(message)  # returns once IoT Hub has acknowledged it
+                delivered += 1
+                label, result = "[ OK ]", "sent"
+            except Exception as exc:
+                label, result = "[FAIL]", f"not sent ({exc})"
+            print(
+                f"{label} {number:>{width}}/{len(events)} {event['event_id']} "
+                f"lat={event['latitude']:.5f} lon={event['longitude']:.5f} "
+                f"speed={event['speed_mps']:.1f} m/s -> {result}"
+            )
+            if number < len(events) and delay:
+                time.sleep(delay)
+    finally:
+        client.shutdown()
+    return delivered
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Send synthetic phone sensor events.")
+    parser = argparse.ArgumentParser(description="Stream synthetic phone sensor events.")
     parser.add_argument(
-        "--api-url",
-        default=os.getenv("DRIVESENSE_API_URL", DEFAULT_API_URL),
-        help="Base URL of the DriveSense API (env DRIVESENSE_API_URL, default %(default)s).",
+        "--connection-string",
+        default=os.getenv(CONNECTION_STRING_ENV, ""),
+        help=f"IoT Hub device connection string (env {CONNECTION_STRING_ENV}).",
     )
     parser.add_argument("--count", type=int, default=10, help="Events to send (default 10).")
-    parser.add_argument("--device-id", default="phone_01", help="Device identifier.")
+    parser.add_argument(
+        "--device-id",
+        default=None,
+        help="Device identifier for --dry-run (default: the connection string's DeviceId).",
+    )
     parser.add_argument("--session-id", default=None, help="Trip identifier (default: generated).")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for sensor values.")
     parser.add_argument(
@@ -158,10 +176,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         default="smooth",
         help="Driving style to simulate (default %(default)s).",
     )
-    parser.add_argument(
-        "--delay", type=float, default=0.2, help="Seconds to wait between requests."
-    )
-    parser.add_argument("--timeout", type=float, default=5.0, help="HTTP timeout in seconds.")
+    parser.add_argument("--delay", type=float, default=0.2, help="Seconds between messages.")
     parser.add_argument(
         "--dry-run", action="store_true", help="Print the payloads without sending them."
     )
@@ -169,12 +184,22 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
     if args.count < 1:
         parser.error("--count must be at least 1")
-    if args.delay < 0 or args.timeout <= 0:
-        parser.error("--delay must be >= 0 and --timeout must be > 0")
-    parsed = parse.urlparse(args.api_url)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        parser.error("--api-url must be an http(s) URL such as http://localhost:8000")
-    args.api_url = args.api_url.rstrip("/")
+    if args.delay < 0:
+        parser.error("--delay must be >= 0")
+
+    hub_device_id = parse_connection_string(args.connection_string).get("DeviceId")
+    if not args.dry_run:
+        if not hub_device_id:
+            parser.error(
+                f"set {CONNECTION_STRING_ENV} or --connection-string to a device connection "
+                "string (HostName=...;DeviceId=...;SharedAccessKey=...)"
+            )
+        if args.device_id and args.device_id != hub_device_id:
+            parser.error(
+                f"--device-id {args.device_id} does not match the connection string's "
+                f"DeviceId {hub_device_id}; the ingestor would reject every reading"
+            )
+    args.device_id = args.device_id or hub_device_id or "phone_01"
     return args
 
 
@@ -192,40 +217,18 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(events, indent=2))
         return 0
 
+    hub = parse_connection_string(args.connection_string).get("HostName", "?")
     print("DriveSense phone simulator")
-    print(f"  API URL : {args.api_url}")
+    print(f"  IoT Hub : {hub}")
     print(f"  Device  : {args.device_id}")
     print(f"  Session : {session_id}")
     print(f"  Events  : {args.count}")
     print(f"  Scenario: {args.scenario}")
-
-    healthy, health_message = check_health(args.api_url, args.timeout)
-    print(f"  Health  : {health_message}")
-    if not healthy:
-        print(
-            "\nThe API is not available. Start it with 'docker compose up --build' "
-            "and check --api-url.",
-            file=sys.stderr,
-        )
-        return 1
     print()
 
-    delivered = 0
-    width = len(str(args.count))
-    for number, event in enumerate(events, start=1):
-        ok, message = send_event(args.api_url, event, args.timeout)
-        delivered += ok
-        label = "[ OK ]" if ok else "[FAIL]"
-        print(
-            f"{label} {number:>{width}}/{args.count} {event['event_id']} "
-            f"lat={event['latitude']:.5f} lon={event['longitude']:.5f} "
-            f"speed={event['speed_mps']:.1f} m/s -> {message}"
-        )
-        if number < args.count and args.delay:
-            time.sleep(args.delay)
-
+    delivered = stream_events(args.connection_string, events, args.delay)
     failed = args.count - delivered
-    print(f"\nSummary: {delivered}/{args.count} events delivered, {failed} failed.")
+    print(f"\nSummary: {delivered}/{args.count} events delivered to IoT Hub, {failed} failed.")
     return 0 if failed == 0 else 1
 
 
