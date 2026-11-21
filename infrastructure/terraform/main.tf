@@ -1,8 +1,9 @@
-# DriveSense - Azure infrastructure foundation.
+# DriveSense - Azure infrastructure.
 #
-# STATUS: foundation only. This configuration declares the provider, naming and tagging
-# conventions. It intentionally creates NO Azure resources yet, so `terraform apply`
-# cannot incur cost. Planned resources are listed at the bottom of this file and in README.md.
+# STATUS: resource group, Log Analytics (core.tf), IoT Hub (iothub.tf) and PostgreSQL
+# (database.tf) are created.
+# The remaining planned resources are listed at the bottom of this file and in README.md.
+# State is kept locally by one operator; shared remote state is planned.
 
 terraform {
   required_version = ">= 1.6.0, < 2.0.0"
@@ -11,6 +12,10 @@ terraform {
     azurerm = {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 
@@ -28,6 +33,11 @@ provider "azurerm" {
 
   # null => taken from the ARM_SUBSCRIPTION_ID environment variable or the Azure CLI login.
   subscription_id = var.subscription_id
+
+  # Don't auto-register ~70 Azure resource providers on first run (slow on a new
+  # subscription). The ones we use are registered once by hand: Microsoft.Devices,
+  # Microsoft.OperationalInsights, Microsoft.DBforPostgreSQL, Microsoft.App.
+  resource_provider_registrations = "none"
 }
 
 locals {
@@ -39,7 +49,7 @@ locals {
     container_apps_env = "cae-${local.name_prefix}"
     backend_app        = "ca-${local.name_prefix}-api"
     frontend_app       = "ca-${local.name_prefix}-web"
-    postgres_server    = "psql-${local.name_prefix}"
+    postgres_server    = "psql-${local.name_prefix}-${random_string.suffix.result}"
     log_analytics      = "log-${local.name_prefix}"
     container_registry = replace("acr${var.project_name}${var.environment}", "-", "")
   }

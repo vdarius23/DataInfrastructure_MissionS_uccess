@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { ConnectionIndicator } from "./components/ConnectionIndicator";
 import { EventsTable } from "./components/EventsTable";
+import { TripsTable } from "./components/TripsTable";
 import { ClockIcon, DatabaseIcon, LogoMark, PhoneIcon, RefreshIcon, RouteIcon } from "./components/Icons";
 import { StatCard } from "./components/StatCard";
 import { EmptyState, ErrorState, StaleDataBanner, TableSkeleton } from "./components/StatePanels";
+import { TripDetailPanel } from "./components/TripDetailPanel";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { formatClockTime, formatCount, formatRelativeTime, formatUtcTimestamp } from "./lib/format";
 
@@ -12,7 +14,8 @@ const AUTO_REFRESH_MS = 5000;
 
 export default function App() {
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const { data, connection, apiVersion, isLoading, error, lastUpdated, refresh } =
+  const [selectedTrip, setSelectedTrip] = useState<string | null>(null);
+  const { data, trips, tripsError, connection, apiVersion, isLoading, error, lastUpdated, refresh } =
     useDashboardData(EVENTS_LIMIT, autoRefresh ? AUTO_REFRESH_MS : null);
 
   const isInitialLoad = data === null && isLoading;
@@ -102,6 +105,52 @@ export default function App() {
             isLoading={isInitialLoad}
           />
         </section>
+
+        <section className="overflow-hidden rounded-xl border border-white/5 bg-navy-900/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">
+            <h2 className="text-sm font-semibold text-white">Trips</h2>
+            <p className="text-xs text-slate-500">
+              Smoothness = 100 − 10 per harsh brake − 5 per harsh acceleration · click a trip for details
+            </p>
+          </div>
+
+          {tripsError && trips && <StaleDataBanner message={tripsError} />}
+
+          {trips === null && isLoading ? (
+            <TableSkeleton rows={4} />
+          ) : trips === null ? (
+            <div role="alert" className="flex flex-col items-center px-6 py-12 text-center">
+              <h3 className="text-base font-semibold text-white">Could not load trips</h3>
+              <p className="mt-1 max-w-md text-sm text-slate-400">
+                {tripsError ?? "The trips data is unavailable."}
+              </p>
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="mt-4 rounded-lg border border-white/10 px-3 py-1.5 text-sm font-medium text-slate-200 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              >
+                Try again
+              </button>
+            </div>
+          ) : trips.count === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <h3 className="text-base font-semibold text-white">No trips yet</h3>
+              <p className="mt-1 text-sm text-slate-400">
+                Send sensor events with the phone simulator, then refresh the dashboard.
+              </p>
+            </div>
+          ) : (
+            <TripsTable
+              trips={trips.trips}
+              selectedSessionId={selectedTrip}
+              onSelect={(sessionId) => setSelectedTrip((current) => (current === sessionId ? null : sessionId))}
+            />
+          )}
+        </section>
+
+        {selectedTrip && (
+          <TripDetailPanel key={selectedTrip} sessionId={selectedTrip} onClose={() => setSelectedTrip(null)} />
+        )}
 
         <section className="overflow-hidden rounded-xl border border-white/5 bg-navy-900/80">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">

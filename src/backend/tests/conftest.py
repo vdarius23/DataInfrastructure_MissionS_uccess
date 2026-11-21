@@ -42,17 +42,23 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import Base, SessionLocal, engine, wait_for_database
+from app.database import SessionLocal, engine
 from app.main import app
+
+
+def reset_schema() -> None:
+    """Drop every table, including Alembic's version table, in the test database."""
+    with engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
 
 
 @pytest.fixture(scope="session")
 def api_client() -> Iterator[TestClient]:
-    wait_for_database(timeout_seconds=30)
-    Base.metadata.drop_all(bind=engine)  # start from a clean schema
+    reset_schema()  # start from an empty database
     with TestClient(app) as client:  # runs the app lifespan -> init_db()
         yield client
-    Base.metadata.drop_all(bind=engine)
+    reset_schema()
 
 
 @pytest.fixture
@@ -67,3 +73,9 @@ def client(api_client: TestClient) -> TestClient:
 def db_session(client: TestClient) -> Iterator[Session]:
     with SessionLocal() as session:
         yield session
+
+
+@pytest.fixture
+def empty_database(api_client: TestClient) -> None:
+    """Drop every table, for tests that build the schema themselves."""
+    reset_schema()
