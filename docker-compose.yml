@@ -1,0 +1,103 @@
+# DriveSense local environment.
+#
+#   docker compose up --build                           # db + backend + frontend
+#   docker compose --profile test run --rm backend-tests  # lint + tests on a disposable DB
+#
+# Values come from .env (copy .env.example). Defaults below are for local development only.
+
+name: drivesense
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-drivesense}
+      POSTGRES_USER: ${POSTGRES_USER:-drivesense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drivesense_local_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./src/backend
+      target: runtime
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-drivesense}:${POSTGRES_PASSWORD:-drivesense_local_dev}@db:5432/${POSTGRES_DB:-drivesense}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      EVENTS_DEFAULT_LIMIT: ${EVENTS_DEFAULT_LIMIT:-100}
+      EVENTS_MAX_LIMIT: ${EVENTS_MAX_LIMIT:-500}
+      DB_CONNECT_TIMEOUT_SECONDS: ${DB_CONNECT_TIMEOUT_SECONDS:-60}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./src/frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
+  # ---- Test-only services (started only with --profile test) ---------------------------------
+
+  db-test:
+    profiles: ["test"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: drivesense_test
+      POSTGRES_USER: drivesense_test
+      POSTGRES_PASSWORD: drivesense_test
+    tmpfs:
+      - /var/lib/postgresql/data # disposable: data is discarded when the container stops
+    ports:
+      - "${TEST_DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drivesense_test -d drivesense_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  backend-tests:
+    profiles: ["test"]
+    build:
+      context: ./src/backend
+      target: test
+    environment:
+      TEST_DATABASE_URL: postgresql+psycopg://drivesense_test:drivesense_test@db-test:5432/drivesense_test
+    depends_on:
+      db-test:
+        condition: service_healthy
+
+volumes:
+  pgdata:
