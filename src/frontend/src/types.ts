@@ -46,6 +46,26 @@ export interface TripListResponse {
   trips: TripSummary[];
 }
 
+export interface DrivingEvent {
+  kind: "harsh_braking" | "harsh_acceleration";
+  start: string;
+  end: string;
+  peak_acceleration_mps2: number;
+  speed_before_mps: number;
+  speed_after_mps: number;
+}
+
+export interface ScoreDeduction {
+  kind: DrivingEvent["kind"];
+  at: string;
+  points: number;
+}
+
+export interface TripDetail extends TripSummary {
+  driving_events: DrivingEvent[];
+  score_deductions: ScoreDeduction[];
+}
+
 export interface HealthResponse {
   status: "ok" | "degraded";
   database: "ok" | "unavailable";

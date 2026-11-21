@@ -5,6 +5,7 @@ import { TripsTable } from "./components/TripsTable";
 import { ClockIcon, DatabaseIcon, LogoMark, PhoneIcon, RefreshIcon, RouteIcon } from "./components/Icons";
 import { StatCard } from "./components/StatCard";
 import { EmptyState, ErrorState, StaleDataBanner, TableSkeleton } from "./components/StatePanels";
+import { TripDetailPanel } from "./components/TripDetailPanel";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { formatClockTime, formatCount, formatRelativeTime, formatUtcTimestamp } from "./lib/format";
 
@@ -13,6 +14,7 @@ const AUTO_REFRESH_MS = 5000;
 
 export default function App() {
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [selectedTrip, setSelectedTrip] = useState<string | null>(null);
   const { data, trips, tripsError, connection, apiVersion, isLoading, error, lastUpdated, refresh } =
     useDashboardData(EVENTS_LIMIT, autoRefresh ? AUTO_REFRESH_MS : null);
 
@@ -108,7 +110,7 @@ export default function App() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">
             <h2 className="text-sm font-semibold text-white">Trips</h2>
             <p className="text-xs text-slate-500">
-              Smoothness = 100 − 10 per harsh brake − 5 per harsh acceleration
+              Smoothness = 100 − 10 per harsh brake − 5 per harsh acceleration · click a trip for details
             </p>
           </div>
 
@@ -138,9 +140,17 @@ export default function App() {
               </p>
             </div>
           ) : (
-            <TripsTable trips={trips.trips} />
+            <TripsTable
+              trips={trips.trips}
+              selectedSessionId={selectedTrip}
+              onSelect={(sessionId) => setSelectedTrip((current) => (current === sessionId ? null : sessionId))}
+            />
           )}
         </section>
+
+        {selectedTrip && (
+          <TripDetailPanel key={selectedTrip} sessionId={selectedTrip} onClose={() => setSelectedTrip(null)} />
+        )}
 
         <section className="overflow-hidden rounded-xl border border-white/5 bg-navy-900/80">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">
