@@ -1,0 +1,36 @@
+# Code ownership: GitHub automatically requests a review from the owner
+
+# of every file a pull request touches. When several lines match a file,
+
+# the LAST matching line wins, so specific rules go below general ones.
+
+# Member 1 - Backend & data
+
+/src/backend/ @persadenis
+
+# Member 3 - Mobile
+
+/src/mobile/ @tudor147
+
+# Member 4 - Frontend
+
+/src/frontend/ @razvan-nojea
+
+# Member 2 - Infrastructure & DevOps (below the folders above, so these win)
+
+/infrastructure/ @vdarius23
+/.github/ @vdarius23
+/devops/ @vdarius23
+/docker-compose.yml @vdarius23
+/src/backend/Dockerfile @vdarius23
+/src/backend/.dockerignore @vdarius23
+/src/frontend/Dockerfile @vdarius23
+/src/frontend/.dockerignore @vdarius23
+/src/frontend/nginx/ @vdarius23
+
+# Shared files: everyone reviews
+
+/README.md @persadenis @vdarius23 @tudor147 @razvan-nojea
+/CLAUDE.md @persadenis @vdarius23 @tudor147 @razvan-nojea
+/TEAM_WORKFLOW.md @persadenis @vdarius23 @tudor147 @razvan-nojea
+/.env.example @persadenis @vdarius23 @tudor147 @razvan-nojea
