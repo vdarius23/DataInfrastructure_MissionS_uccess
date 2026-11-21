@@ -7,7 +7,7 @@ sends them to the DriveSense API with HTTP POST requests. No phone hardware need
 Nothing is sent until you run this script explicitly:
 
     python src/mobile/simulator/send_events.py
-    python src/mobile/simulator/send_events.py --api-url http://localhost:8000 --count 10
+    python src/mobile/simulator/send_events.py --api-url http://172.20.10.2:8000 --count 10
     python src/mobile/simulator/send_events.py --dry-run      # print payloads only
 
 Exit codes: 0 = all events delivered, 1 = at least one event not delivered, 2 = bad arguments.
@@ -28,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib import error, parse, request
 
-DEFAULT_API_URL = "http://localhost:8000"
+DEFAULT_API_URL = "http://172.20.10.11:8000"
 METERS_PER_DEGREE_LAT = 111_320.0
 GRAVITY = 9.81
 SAMPLE_INTERVAL_S = 1.0
