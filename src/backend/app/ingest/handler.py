@@ -67,7 +67,7 @@ def ingest_message(db: Session, body: str | bytes, hub_device_id: str | None) ->
 def split_replay(text: str) -> list[str]:
     """Split replay input into message bodies: a JSON array or one JSON object per line."""
     # Windows PowerShell starts piped text with a byte order mark (U+FEFF); ignore it.
-    stripped = text.lstrip("﻿").strip()
+    stripped = text.lstrip("\ufeff").strip()
     if stripped.startswith("["):
         return [json.dumps(item) for item in json.loads(stripped)]
     return [line for line in stripped.splitlines() if line.strip()]
