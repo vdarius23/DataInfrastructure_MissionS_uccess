@@ -78,13 +78,3 @@ def list_events_for_sessions(db: Session, session_ids: list[str]) -> list[Sensor
         .order_by(SensorEvent.session_id, SensorEvent.timestamp, SensorEvent.id)
     )
     return list(db.scalars(statement))
-
-
-def list_session_events(db: Session, session_id: str) -> list[SensorEvent]:
-    """Return every sensor sample for one session, in measurement order."""
-    statement = (
-        select(SensorEvent)
-        .where(SensorEvent.session_id == session_id)
-        .order_by(SensorEvent.timestamp, SensorEvent.id)
-    )
-    return list(db.scalars(statement))
