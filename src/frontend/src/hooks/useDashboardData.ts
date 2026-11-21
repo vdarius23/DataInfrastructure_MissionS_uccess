@@ -28,8 +28,11 @@ function describeError(reason: unknown): string {
   return "Unexpected error while loading data.";
 }
 
-/** Loads API health and recent events together; keeps the last good data on failure. */
-export function useDashboardData(limit: number) {
+/**
+ * Loads API health and recent events together; keeps the last good data on failure.
+ * When `autoRefreshMs` is set, refreshes on that interval while the browser tab is visible.
+ */
+export function useDashboardData(limit: number, autoRefreshMs: number | null = null) {
   const [state, setState] = useState<DashboardState>(INITIAL_STATE);
   const latestRequest = useRef(0);
 
@@ -54,6 +57,14 @@ export function useDashboardData(limit: number) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!autoRefreshMs) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, autoRefreshMs);
+    return () => window.clearInterval(timer); // stop the timer when switched off or unmounted
+  }, [autoRefreshMs, refresh]);
 
   return { ...state, refresh };
 }
