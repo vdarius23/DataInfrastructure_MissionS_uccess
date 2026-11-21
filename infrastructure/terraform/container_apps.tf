@@ -6,6 +6,11 @@ resource "azurerm_container_app_environment" "main" {
   resource_group_name        = azurerm_resource_group.main.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   tags                       = local.common_tags
+
+  lifecycle {
+    # Azure adds a default "Consumption" workload profile by itself; don't fight it.
+    ignore_changes = [workload_profile]
+  }
 }
 
 resource "azurerm_container_app" "backend" {
@@ -20,9 +25,11 @@ resource "azurerm_container_app" "backend" {
     value = local.database_url
   }
 
-  # Internal only: the browser reaches the API through the frontend's nginx.
+  # Public HTTPS address. Our student subscription gets an "express" Container Apps
+  # environment, which supports neither internal apps nor app-to-app traffic, so the
+  # dashboard's nginx reaches the API through this public address like any client.
   ingress {
-    external_enabled = false
+    external_enabled = true
     target_port      = 8000
 
     traffic_weight {
@@ -82,10 +89,13 @@ resource "azurerm_container_app" "frontend" {
       cpu    = 0.25
       memory = "0.5Gi"
 
-      # Apps in the same environment reach each other by app name.
+      # The backend's public HTTPS address (express environments have no app-to-app
+      # networking; the short name and the ".internal" name were tested and don't work).
+      # nginx sends this name as the Host header ($proxy_host, Lesson 6) and as TLS SNI
+      # (proxy_ssl_server_name), which is how Azure routes the request to the backend.
       env {
         name  = "BACKEND_URL"
-        value = "http://${azurerm_container_app.backend.name}"
+        value = "https://${azurerm_container_app.backend.ingress[0].fqdn}"
       }
     }
   }
