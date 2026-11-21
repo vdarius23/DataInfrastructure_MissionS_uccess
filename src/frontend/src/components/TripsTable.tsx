@@ -19,7 +19,13 @@ const HEADERS: { label: string; numeric?: boolean }[] = [
   { label: "Smoothness", numeric: true },
 ];
 
-export function TripsTable({ trips }: { trips: TripSummary[] }) {
+interface TripsTableProps {
+  trips: TripSummary[];
+  selectedSessionId: string | null;
+  onSelect: (sessionId: string) => void;
+}
+
+export function TripsTable({ trips, selectedSessionId, onSelect }: TripsTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-sm">
@@ -40,10 +46,21 @@ export function TripsTable({ trips }: { trips: TripSummary[] }) {
         <tbody className="divide-y divide-white/5">
           {trips.map((trip) => {
             const badge = scoreBadge(trip.smoothness_score);
+            const isSelected = trip.session_id === selectedSessionId;
             return (
-              <tr key={trip.session_id} className="transition-colors hover:bg-white/[0.03]">
-                <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-300">
-                  {trip.session_id}
+              <tr
+                key={trip.session_id}
+                className={`transition-colors ${isSelected ? "bg-sky-500/10" : "hover:bg-white/[0.03]"}`}
+              >
+                <td className="whitespace-nowrap px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(trip.session_id)}
+                    aria-pressed={isSelected}
+                    className="rounded font-mono text-xs text-sky-300 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                  >
+                    {trip.session_id}
+                  </button>
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-slate-300">{trip.device_id}</td>
                 <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-300">
