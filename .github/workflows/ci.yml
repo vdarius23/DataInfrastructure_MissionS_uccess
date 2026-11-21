@@ -142,8 +142,10 @@ jobs:
       - name: Start stack
         run: docker compose up -d --build --wait --wait-timeout 240
 
-      - name: Send 10 simulated events
-        run: python src/mobile/simulator/send_events.py --api-url http://localhost:8000 --count 10 --delay 0
+      - name: Replay 10 simulated readings through the ingestor (CI has no IoT Hub)
+        run: |
+          python src/mobile/simulator/send_events.py --dry-run --count 10 > events.json
+          docker compose run --rm -T --build ingestor python -m app.ingest --replay - < events.json
 
       - name: Verify events through the frontend proxy
         run: |

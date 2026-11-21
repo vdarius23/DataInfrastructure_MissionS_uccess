@@ -35,3 +35,10 @@ export function formatSigned(value: number, digits = 2): string {
 }
 
 export const metersPerSecondToKmh = (value: number) => value * 3.6;
+
+/** Format seconds as "1m 15s" or "9s". */
+export function formatDuration(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  return minutes > 0 ? `${minutes}m ${pad(totalSeconds % 60)}s` : `${totalSeconds}s`;
+}

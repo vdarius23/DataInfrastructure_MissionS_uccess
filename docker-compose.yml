@@ -69,6 +69,25 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # IoT Hub ingestor: reads the device stream and stores readings (profile "iothub").
+  # Needs IOTHUB_EVENTS_CONNECTION_STRING in .env. CI and offline demos use replay mode:
+  #   docker compose run --rm -T ingestor python -m app.ingest --replay - < events.json
+  ingestor:
+    profiles: ["iothub"]
+    build:
+      context: ./src/backend
+      target: runtime
+    command: ["python", "-m", "app.ingest"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-drivesense}:${POSTGRES_PASSWORD:-drivesense_local_dev}@db:5432/${POSTGRES_DB:-drivesense}
+      IOTHUB_EVENTS_CONNECTION_STRING: ${IOTHUB_EVENTS_CONNECTION_STRING:-}
+      # Local runs read with $Default, so they never compete with the Azure ingestor's group.
+      IOTHUB_CONSUMER_GROUP: ${IOTHUB_CONSUMER_GROUP:-$$Default}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ---- Test-only services (started only with --profile test) ---------------------------------
 
   db-test:

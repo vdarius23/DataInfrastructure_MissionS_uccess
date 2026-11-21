@@ -1,4 +1,4 @@
-import type { ApiErrorBody, EventListResponse, HealthResponse } from "../types";
+import type { ApiErrorBody, EventListResponse, HealthResponse, TripDetail, TripListResponse } from "../types";
 
 // Empty by default: the dashboard calls the API on its own origin and nginx (Docker)
 // or the Vite dev server proxies /api and /health to FastAPI.
@@ -73,4 +73,14 @@ export function fetchHealth(): Promise<HealthResponse> {
 /** GET /api/events?limit=N */
 export function fetchEvents(limit: number): Promise<EventListResponse> {
   return requestJson<EventListResponse>(`/api/events?limit=${encodeURIComponent(limit)}`);
+}
+
+/** GET /api/trips?limit=N */
+export function fetchTrips(limit: number): Promise<TripListResponse> {
+  return requestJson<TripListResponse>(`/api/trips?limit=${encodeURIComponent(limit)}`);
+}
+
+/** GET /api/trips/{session_id}: one trip with driving events and score deductions. */
+export function fetchTripDetail(sessionId: string): Promise<TripDetail> {
+  return requestJson<TripDetail>(`/api/trips/${encodeURIComponent(sessionId)}`);
 }

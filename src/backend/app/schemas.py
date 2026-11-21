@@ -114,3 +114,57 @@ class ErrorResponse(BaseModel):
     """Shape of every error response returned by the API."""
 
     error: ErrorBody
+
+
+# --- Trips (v0.2) ------------------------------------------------------------------------------
+
+DrivingEventKind = Literal["harsh_braking", "harsh_acceleration"]
+
+
+class DrivingEventRead(BaseModel):
+    """One detected harsh braking or harsh acceleration."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    kind: DrivingEventKind
+    start: datetime
+    end: datetime
+    peak_acceleration_mps2: float
+    speed_before_mps: float
+    speed_after_mps: float
+
+
+class ScoreDeductionRead(BaseModel):
+    """Why points were subtracted from the smoothness score."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    kind: DrivingEventKind
+    at: datetime
+    points: int
+
+
+class TripSummary(BaseModel):
+    """One trip (= one session_id) with its key figures."""
+
+    session_id: str
+    device_id: str
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: float
+    event_count: int
+    max_speed_mps: float
+    avg_speed_mps: float
+    harsh_braking_count: int
+    harsh_acceleration_count: int
+    smoothness_score: int = Field(ge=0, le=100)
+
+
+class TripListResponse(BaseModel):
+    count: int
+    trips: list[TripSummary] = Field(description="Trips, most recently active first.")
+
+
+class TripDetailResponse(TripSummary):
+    driving_events: list[DrivingEventRead]
+    score_deductions: list[ScoreDeductionRead]

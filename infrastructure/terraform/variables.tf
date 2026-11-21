@@ -23,7 +23,37 @@ variable "environment" {
 variable "location" {
   description = "Azure region for all resources."
   type        = string
-  default     = "westeurope"
+  default     = "francecentral"
+}
+
+variable "postgres_location" {
+  description = "Region for PostgreSQL. Student subscriptions get no Burstable capacity in some allowed regions."
+  type        = string
+  default     = "italynorth"
+}
+
+variable "postgres_sku" {
+  description = "PostgreSQL Flexible Server size. The student subscription gets no Burstable (B1ms/B2s) capacity in francecentral or italynorth, so this is the smallest General Purpose size. Stop or destroy the server when it is not needed."
+  type        = string
+  default     = "GP_Standard_D2ds_v5"
+}
+
+variable "image_repository" {
+  description = "Where CI publishes the images (lowercase). The packages are public, so no registry login is needed."
+  type        = string
+  default     = "ghcr.io/vdarius23/datainfrastructure_missions_uccess"
+}
+
+variable "image_tag" {
+  description = "Image tag to deploy: latest, or sha-1a2b3c4 to pin or roll back to one commit."
+  type        = string
+  default     = "latest"
+}
+
+variable "deploy_ingestor" {
+  description = "Run the IoT Hub ingestor app. Needs a backend image that contains app.ingest."
+  type        = bool
+  default     = false
 }
 
 variable "subscription_id" {

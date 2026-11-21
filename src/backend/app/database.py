@@ -3,8 +3,12 @@
 import logging
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from alembic import command
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -60,8 +64,26 @@ def wait_for_database(timeout_seconds: int, interval_seconds: float = 1.0) -> No
         time.sleep(interval_seconds)
 
 
-def init_db() -> None:
-    """Create tables that do not exist yet. Idempotent and safe to run on every start."""
-    from app import models  # noqa: F401  (registers models on Base.metadata)
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+BASELINE_REVISION = "0001"  # the migration that creates the original sensor_events table
 
-    Base.metadata.create_all(bind=engine)
+
+def alembic_config() -> Config:
+    """Alembic settings for running migrations from inside the app (no alembic.ini needed)."""
+    config = Config()
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    return config
+
+
+def init_db() -> None:
+    """Bring the schema up to date by running Alembic migrations. Safe on every start."""
+    config = alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        has_events_table = inspect(connection).has_table("sensor_events")
+        recorded_revision = MigrationContext.configure(connection).get_current_revision()
+        if has_events_table and recorded_revision is None:
+            # Created by the old create_all() code: mark it as already at the first migration.
+            logger.info("Existing schema without migration history; stamping %s", BASELINE_REVISION)
+            command.stamp(config, BASELINE_REVISION)
+        command.upgrade(config, "head")
