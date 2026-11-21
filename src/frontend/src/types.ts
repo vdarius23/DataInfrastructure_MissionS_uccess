@@ -26,6 +26,26 @@ export interface EventListResponse {
   events: SensorEvent[];
 }
 
+/** One trip (= one session_id), mirrored from the backend's TripSummary schema. */
+export interface TripSummary {
+  session_id: string;
+  device_id: string;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  event_count: number;
+  max_speed_mps: number;
+  avg_speed_mps: number;
+  harsh_braking_count: number;
+  harsh_acceleration_count: number;
+  smoothness_score: number;
+}
+
+export interface TripListResponse {
+  count: number;
+  trips: TripSummary[];
+}
+
 export interface HealthResponse {
   status: "ok" | "degraded";
   database: "ok" | "unavailable";
