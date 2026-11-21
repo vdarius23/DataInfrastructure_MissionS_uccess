@@ -53,7 +53,7 @@ variable "image_tag" {
 variable "deploy_ingestor" {
   description = "Run the IoT Hub ingestor app. Needs a backend image that contains app.ingest."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "subscription_id" {

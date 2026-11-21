@@ -126,9 +126,11 @@ resource "azurerm_container_app" "ingestor" {
     max_replicas = 1
 
     container {
-      name    = "ingestor"
-      image   = "${var.image_repository}/backend:${var.image_tag}"
-      command = ["python", "-m", "app.ingest"]
+      name  = "ingestor"
+      image = "${var.image_repository}/backend:${var.image_tag}"
+      # Container Apps appends the image's CMD (uvicorn ...) as arguments to "command".
+      # Wrapping in sh -c makes those extra arguments harmless (they become $0, $1, ...).
+      command = ["sh", "-c", "exec python -m app.ingest"]
       cpu     = 0.25
       memory  = "0.5Gi"
 
