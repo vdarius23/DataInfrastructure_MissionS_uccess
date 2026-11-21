@@ -1,0 +1,22 @@
+# Local Terraform working directory and state - never commit.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+tfplan
+
+# Variable files may contain secrets. Commit only the *.example file.
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# NOTE: .terraform.lock.hcl SHOULD be committed (pins provider versions).
