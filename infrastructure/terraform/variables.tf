@@ -26,6 +26,18 @@ variable "location" {
   default     = "francecentral"
 }
 
+variable "postgres_location" {
+  description = "Region for PostgreSQL. Student subscriptions get no Burstable capacity in some allowed regions."
+  type        = string
+  default     = "italynorth"
+}
+
+variable "postgres_sku" {
+  description = "PostgreSQL Flexible Server size. The student subscription gets no Burstable (B1ms/B2s) capacity in francecentral or italynorth, so this is the smallest General Purpose size. Stop or destroy the server when it is not needed."
+  type        = string
+  default     = "GP_Standard_D2ds_v5"
+}
+
 variable "subscription_id" {
   description = "Azure subscription ID. Leave null to use ARM_SUBSCRIPTION_ID or the Azure CLI context."
   type        = string
