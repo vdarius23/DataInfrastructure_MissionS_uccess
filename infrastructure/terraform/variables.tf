@@ -23,7 +23,7 @@ variable "environment" {
 variable "location" {
   description = "Azure region for all resources."
   type        = string
-  default     = "westeurope"
+  default     = "francecentral"
 }
 
 variable "subscription_id" {
