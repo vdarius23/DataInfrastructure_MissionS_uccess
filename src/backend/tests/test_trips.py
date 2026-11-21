@@ -75,6 +75,16 @@ def test_trip_detail_explains_the_score(client: TestClient) -> None:
     assert [deduction["points"] for deduction in body["score_deductions"]] == [10, 5]
 
 
+def test_trip_detail_includes_every_sample_in_time_order(client: TestClient) -> None:
+    send_trip(client, "trip_c", [15, 10, 10, 14])
+
+    body = client.get("/api/trips/trip_c").json()
+
+    assert [sample["speed_mps"] for sample in body["samples"]] == [15, 10, 10, 14]
+    assert {sample["session_id"] for sample in body["samples"]} == {"trip_c"}
+    assert "samples" not in client.get("/api/trips").json()["trips"][0]
+
+
 def test_unknown_trip_returns_404(client: TestClient) -> None:
     response = client.get("/api/trips/does_not_exist")
 
