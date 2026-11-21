@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiRequestError, fetchEvents, fetchHealth } from "../api/client";
-import type { EventListResponse } from "../types";
+import { ApiRequestError, fetchEvents, fetchHealth, fetchTrips } from "../api/client";
+import type { EventListResponse, TripListResponse } from "../types";
 
 export type ConnectionStatus = "checking" | "online" | "degraded" | "offline";
 
 interface DashboardState {
   data: EventListResponse | null;
+  trips: TripListResponse | null;
+  tripsError: string | null;
   connection: ConnectionStatus;
   apiVersion: string | null;
   isLoading: boolean;
@@ -15,6 +17,8 @@ interface DashboardState {
 
 const INITIAL_STATE: DashboardState = {
   data: null,
+  trips: null,
+  tripsError: null,
   connection: "checking",
   apiVersion: null,
   isLoading: true,
@@ -29,22 +33,28 @@ function describeError(reason: unknown): string {
 }
 
 /**
- * Loads API health and recent events together; keeps the last good data on failure.
+ * Loads API health, recent events and trips together; keeps the last good data on failure.
  * When `autoRefreshMs` is set, refreshes on that interval while the browser tab is visible.
  */
 export function useDashboardData(limit: number, autoRefreshMs: number | null = null) {
   const [state, setState] = useState<DashboardState>(INITIAL_STATE);
-  const latestRequest = useRef(0);
+  const isRequestInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
-    const requestId = ++latestRequest.current;
+    if (isRequestInFlight.current) return;
+    isRequestInFlight.current = true;
     setState((previous) => ({ ...previous, isLoading: true }));
 
-    const [health, events] = await Promise.allSettled([fetchHealth(), fetchEvents(limit)]);
-    if (requestId !== latestRequest.current) return; // a newer refresh superseded this one
+    const [health, events, trips] = await Promise.allSettled([
+      fetchHealth(),
+      fetchEvents(limit),
+      fetchTrips(10),
+    ]);
 
     setState((previous) => ({
       data: events.status === "fulfilled" ? events.value : previous.data,
+      trips: trips.status === "fulfilled" ? trips.value : previous.trips,
+      tripsError: trips.status === "rejected" ? describeError(trips.reason) : null,
       error: events.status === "rejected" ? describeError(events.reason) : null,
       connection:
         health.status === "rejected" ? "offline" : health.value.status === "ok" ? "online" : "degraded",
@@ -52,6 +62,7 @@ export function useDashboardData(limit: number, autoRefreshMs: number | null = n
       isLoading: false,
       lastUpdated: events.status === "fulfilled" ? new Date() : previous.lastUpdated,
     }));
+    isRequestInFlight.current = false;
   }, [limit]);
 
   useEffect(() => {
