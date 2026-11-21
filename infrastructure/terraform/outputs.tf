@@ -25,6 +25,11 @@ output "resource_group_name" {
   value       = azurerm_resource_group.main.name
 }
 
+output "dashboard_url" {
+  description = "Public URL of the DriveSense dashboard."
+  value       = "https://${azurerm_container_app.frontend.ingress[0].fqdn}"
+}
+
 output "postgres_fqdn" {
   description = "PostgreSQL server host name."
   value       = azurerm_postgresql_flexible_server.main.fqdn
