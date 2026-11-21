@@ -2,19 +2,30 @@ import * as Location from "expo-location";
 import { useKeepAwake } from "expo-keep-awake";
 import { Accelerometer } from "expo-sensors";
 import { StatusBar } from "expo-status-bar";
+import mqtt from "mqtt";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 const GRAVITY = 9.81; // expo-sensors reports acceleration in g; the API expects m/s²
-const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
+// A device SAS token from: az iot hub generate-sas-token --hub-name <hub> --device-id phone_01
+const DEFAULT_DEVICE_TOKEN = process.env.EXPO_PUBLIC_DEVICE_TOKEN ?? "";
+const IOTHUB_API_VERSION = "2021-04-12";
 
 type Acceleration = { x: number; y: number; z: number };
+type Connection = "offline" | "connecting" | "streaming";
 
 interface Stats {
   sent: number;
   failed: number;
   lastSpeedMps: number | null;
   lastError: string | null;
+}
+
+interface DeviceIdentity {
+  host: string; // e.g. iot-drivesense-dev-1a2b3c.azure-devices.net
+  deviceId: string; // e.g. phone_01, registered in IoT Hub
+  token: string; // the full "SharedAccessSignature sr=...&sig=...&se=..." string
+  expiresAt: Date;
 }
 
 const EMPTY_STATS: Stats = { sent: 0, failed: 0, lastSpeedMps: null, lastError: null };
@@ -27,21 +38,59 @@ function randomHex(length: number): string {
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
+/** Read the hub host and device id out of the SAS token itself, so the user pastes one value. */
+function parseDeviceToken(raw: string): DeviceIdentity | null {
+  const token = raw.trim();
+  if (!token.startsWith("SharedAccessSignature ")) return null;
+  const fields = new Map<string, string>();
+  for (const part of token.slice("SharedAccessSignature ".length).split("&")) {
+    const separator = part.indexOf("=");
+    if (separator > 0) fields.set(part.slice(0, separator), part.slice(separator + 1));
+  }
+  const resource = decodeURIComponent(fields.get("sr") ?? ""); // <host>/devices/<deviceId>
+  const [host, deviceId] = resource.split("/devices/");
+  const expiresAt = new Date(Number(fields.get("se")) * 1000);
+  if (!host || !deviceId || Number.isNaN(expiresAt.getTime())) return null;
+  return { host, deviceId, token, expiresAt };
+}
+
 export default function App() {
   useKeepAwake(); // the app records only while it is open, so keep the screen on
 
-  const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
-  const [deviceId] = useState(() => `phone_${randomHex(6)}`);
+  const [tokenInput, setTokenInput] = useState(DEFAULT_DEVICE_TOKEN);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [connection, setConnection] = useState<Connection>("offline");
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const latestAcceleration = useRef<Acceleration>({ x: 0, y: 0, z: 0 });
 
+  const identity = parseDeviceToken(tokenInput);
+  const tokenExpired = identity !== null && identity.expiresAt.getTime() < Date.now();
+  const canStart = identity !== null && !tokenExpired;
+
   // While a session id is set, we are recording. Clearing it stops everything (cleanup below).
   useEffect(() => {
-    if (!sessionId) return;
-    const baseUrl = apiUrl.trim().replace(/\/+$/, "");
+    if (!sessionId || !identity) return;
+    const { host, deviceId, token } = identity;
     let stopped = false;
     let locationSubscription: Location.LocationSubscription | null = null;
+
+    // One MQTT connection for the whole trip: readings are streamed over it, not POSTed.
+    // IoT Hub accepts MQTT over secure WebSockets on port 443, which phones can always reach.
+    setConnection("connecting");
+    const client = mqtt.connect(`wss://${host}:443/$iothub/websocket?iothub-no-client-cert=true`, {
+      clientId: deviceId,
+      username: `${host}/${deviceId}/?api-version=${IOTHUB_API_VERSION}`,
+      password: token,
+      protocolVersion: 4, // IoT Hub speaks MQTT 3.1.1
+      clean: false,
+      keepalive: 60,
+      reconnectPeriod: 3000, // reconnect by itself after a network drop
+    });
+    client.on("connect", () => setConnection("streaming"));
+    client.on("reconnect", () => setConnection("connecting"));
+    client.on("offline", () => setConnection("offline"));
+    client.on("error", (error) => setStats((s) => ({ ...s, lastError: error.message })));
+    const topic = `devices/${deviceId}/messages/events/`;
 
     // The accelerometer reports ~10 times a second; we keep only the newest reading.
     Accelerometer.setUpdateInterval(100);
@@ -49,12 +98,12 @@ export default function App() {
       latestAcceleration.current = reading;
     });
 
-    async function send(location: Location.LocationObject) {
+    function send(location: Location.LocationObject) {
       const a = latestAcceleration.current;
       const speed = location.coords.speed ?? 0; // null or -1 means "unknown"
       const event = {
         event_id: `evt_${randomHex(20)}`,
-        device_id: deviceId,
+        device_id: deviceId, // must equal the IoT Hub identity, or the ingestor rejects it
         session_id: sessionId,
         timestamp: new Date(location.timestamp).toISOString(),
         latitude: location.coords.latitude,
@@ -64,22 +113,15 @@ export default function App() {
         acceleration_y: round3(a.y * GRAVITY),
         acceleration_z: round3(a.z * GRAVITY),
       };
-      try {
-        const response = await fetch(`${baseUrl}/api/events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify(event),
-        });
-        if (response.ok) {
-          setStats((s) => ({ ...s, sent: s.sent + 1, lastSpeedMps: event.speed_mps, lastError: null }));
+      // QoS 1: IoT Hub acknowledges every message. While offline, mqtt.js queues readings
+      // and sends them after reconnecting.
+      client.publish(topic, JSON.stringify(event), { qos: 1 }, (error) => {
+        if (error) {
+          setStats((s) => ({ ...s, failed: s.failed + 1, lastError: error.message }));
         } else {
-          const body = await response.json().catch(() => null);
-          const message: string = body?.error?.message ?? `HTTP ${response.status}`;
-          setStats((s) => ({ ...s, failed: s.failed + 1, lastError: message }));
+          setStats((s) => ({ ...s, sent: s.sent + 1, lastSpeedMps: event.speed_mps, lastError: null }));
         }
-      } catch {
-        setStats((s) => ({ ...s, failed: s.failed + 1, lastError: "Cannot reach the API. Check the URL." }));
-      }
+      });
     }
 
     async function start() {
@@ -91,7 +133,7 @@ export default function App() {
       }
       const subscription = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
-        (location) => void send(location),
+        (location) => send(location),
       );
       if (stopped) subscription.remove(); // the user pressed Stop while we were waiting
       else locationSubscription = subscription;
@@ -102,8 +144,11 @@ export default function App() {
       stopped = true;
       accelerometerSubscription.remove();
       locationSubscription?.remove();
+      client.end(false, () => setConnection("offline")); // flush queued readings, then close
     };
-  }, [sessionId, apiUrl, deviceId]);
+    // identity is derived from tokenInput, which cannot change while recording
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   const recording = sessionId !== null;
 
@@ -117,34 +162,41 @@ export default function App() {
     setSessionId(`trip_${stamp}_${randomHex(4)}`);
   }
 
+  let tokenMessage: string | null = null;
+  if (tokenInput.trim() && !identity) tokenMessage = "This is not a device SAS token.";
+  else if (tokenExpired) tokenMessage = "This token has expired. Generate a new one.";
+
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
       <Text style={styles.title}>DriveSense</Text>
       <Text style={styles.subtitle}>Phone sensor recorder</Text>
 
-      <Text style={styles.label}>API address</Text>
+      <Text style={styles.label}>Device token (IoT Hub)</Text>
       <TextInput
         style={[styles.input, recording && styles.inputDisabled]}
-        value={apiUrl}
-        onChangeText={setApiUrl}
+        value={tokenInput}
+        onChangeText={setTokenInput}
         editable={!recording}
-        placeholder="https://your-dashboard-address"
+        placeholder="SharedAccessSignature sr=..."
         placeholderTextColor="#64748b"
         autoCapitalize="none"
         autoCorrect={false}
-        keyboardType="url"
+        multiline
       />
-      <Text style={styles.meta}>Device: {deviceId}</Text>
+      {tokenMessage && <Text style={styles.error}>{tokenMessage}</Text>}
+      <Text style={styles.meta}>
+        Device: {identity?.deviceId ?? "–"} · Stream: {connection}
+      </Text>
       {sessionId && <Text style={styles.meta}>Trip: {sessionId}</Text>}
 
       <Pressable
         onPress={toggleRecording}
-        disabled={!apiUrl.trim()}
+        disabled={!canStart && !recording}
         style={({ pressed }) => [
           styles.button,
           recording ? styles.buttonStop : styles.buttonStart,
-          (pressed || !apiUrl.trim()) && styles.buttonDimmed,
+          (pressed || (!canStart && !recording)) && styles.buttonDimmed,
         ]}
       >
         <Text style={styles.buttonText}>{recording ? "Stop trip" : "Start trip"}</Text>
@@ -160,7 +212,8 @@ export default function App() {
       </View>
       {stats.lastError && <Text style={styles.error}>{stats.lastError}</Text>}
       <Text style={styles.hint}>
-        One reading per second while this screen is open. Keep the phone still in a holder while driving.
+        One reading per second while this screen is open, streamed to Azure IoT Hub. Keep the phone
+        still in a holder while driving.
       </Text>
     </View>
   );
@@ -188,6 +241,7 @@ const styles = StyleSheet.create({
     color: "#e2e8f0",
     paddingHorizontal: 12,
     paddingVertical: 10,
+    maxHeight: 96,
   },
   inputDisabled: { opacity: 0.6 },
   meta: { color: "#64748b", fontSize: 12, marginTop: 8 },
