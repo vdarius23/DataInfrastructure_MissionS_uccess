@@ -32,6 +32,8 @@ DEFAULT_API_URL = "http://localhost:8000"
 METERS_PER_DEGREE_LAT = 111_320.0
 GRAVITY = 9.81
 SAMPLE_INTERVAL_S = 1.0
+SCENARIOS = ("smooth", "harsh-brake")
+HARSH_BRAKE_MPS2 = -4.5  # well past the backend's -3.0 m/s^2 harsh-braking threshold
 # Trip start: Cluj-Napoca city centre.
 START_LATITUDE = 46.7712
 START_LONGITUDE = 23.6236
@@ -43,12 +45,15 @@ def build_trip_events(
     session_id: str,
     rng: random.Random,
     start_time: datetime,
+    scenario: str = "smooth",
 ) -> list[dict[str, Any]]:
-    """Build ``count`` consecutive samples (1 Hz) of a smooth urban drive.
+    """Build ``count`` consecutive samples (1 Hz) of an urban drive.
 
     The car accelerates during the first half of the trip and eases off in the second
-    half. Phone axes: x = lateral, y = longitudinal, z = vertical (gravity included).
+    half. With scenario "harsh-brake" the driver brakes hard for 2 seconds at 60% of
+    the trip. Phone axes: x = lateral, y = longitudinal, z = vertical (gravity included).
     """
+    brake_start = int(count * 0.6) if scenario == "harsh-brake" else None
     latitude, longitude = START_LATITUDE, START_LONGITUDE
     heading = math.radians(rng.uniform(55.0, 95.0))
     speed = rng.uniform(7.0, 9.0)
@@ -57,7 +62,11 @@ def build_trip_events(
     for index in range(count):
         progress = index / max(count - 1, 1)
         longitudinal = 1.2 * math.cos(math.pi * progress) + rng.gauss(0.0, 0.15)
+        if brake_start is not None and brake_start <= index < brake_start + 2:
+            longitudinal = HARSH_BRAKE_MPS2 + rng.gauss(0.0, 0.2)
         new_speed = max(0.0, speed + longitudinal * SAMPLE_INTERVAL_S)
+        # Use the real speed change: once the car has stopped it no longer decelerates.
+        longitudinal = (new_speed - speed) / SAMPLE_INTERVAL_S
         heading_change = math.radians(rng.gauss(0.0, 2.0))
         lateral = new_speed * heading_change / SAMPLE_INTERVAL_S
 
@@ -144,6 +153,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--session-id", default=None, help="Trip identifier (default: generated).")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for sensor values.")
     parser.add_argument(
+        "--scenario",
+        choices=SCENARIOS,
+        default="smooth",
+        help="Driving style to simulate (default %(default)s).",
+    )
+    parser.add_argument(
         "--delay", type=float, default=0.2, help="Seconds to wait between requests."
     )
     parser.add_argument("--timeout", type=float, default=5.0, help="HTTP timeout in seconds.")
@@ -169,7 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(UTC).replace(microsecond=0)
     session_id = args.session_id or f"trip_{now:%Y%m%dT%H%M%S}_{uuid.uuid4().hex[:4]}"
     start_time = now - timedelta(seconds=args.count * SAMPLE_INTERVAL_S)
-    events = build_trip_events(args.count, args.device_id, session_id, rng, start_time)
+    events = build_trip_events(
+        args.count, args.device_id, session_id, rng, start_time, args.scenario
+    )
 
     if args.dry_run:
         print(json.dumps(events, indent=2))
@@ -180,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Device  : {args.device_id}")
     print(f"  Session : {session_id}")
     print(f"  Events  : {args.count}")
+    print(f"  Scenario: {args.scenario}")
 
     healthy, health_message = check_health(args.api_url, args.timeout)
     print(f"  Health  : {health_message}")
