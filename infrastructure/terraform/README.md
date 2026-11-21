@@ -4,33 +4,33 @@
 
 ## Status
 
-| Item | Status |
-|---|---|
-| Terraform version constraint (`>= 1.6, < 2.0`) | ✅ Implemented |
-| `azurerm` provider (`~> 4.0`, locked to 4.81.0) | ✅ Implemented |
-| Variables (`project_name`, `environment`, `location`, `subscription_id`, `tags`) with validation | ✅ Implemented |
-| Naming convention and common tags (`locals`) | ✅ Implemented |
-| Outputs (planned names, tags) | ✅ Implemented |
-| `terraform fmt` / `terraform validate` in CI | ⏳ Planned |
-| Remote state (Azure Storage backend) | ⏳ Planned |
-| Resource group | ⏳ Planned |
-| Log Analytics workspace | ⏳ Planned |
-| Azure Container Registry | ⏳ Planned |
-| Azure Database for PostgreSQL Flexible Server | ⏳ Planned |
-| Azure Container Apps environment + backend/frontend apps | ⏳ Planned |
+| Item                                                                                             | Status      |
+| ------------------------------------------------------------------------------------------------ | ----------- |
+| Terraform version constraint (`>= 1.6, < 2.0`)                                                   | Implemented |
+| `azurerm` provider (`~> 4.0`, locked to 4.81.0)                                                  | Implemented |
+| Variables (`project_name`, `environment`, `location`, `subscription_id`, `tags`) with validation | Implemented |
+| Naming convention and common tags (`locals`)                                                     | Implemented |
+| Outputs (planned names, tags)                                                                    | Implemented |
+| `terraform fmt` / `terraform validate` in CI                                                     | Implemented |
+| Remote state (Azure Storage backend)                                                             | Planned     |
+| Resource group                                                                                   | Planned     |
+| Log Analytics workspace                                                                          | Planned     |
+| Azure Container Registry                                                                         | Planned     |
+| Azure Database for PostgreSQL Flexible Server                                                    | Planned     |
+| Azure Container Apps environment + backend/frontend apps                                         | Planned     |
 
 **No Azure resources are created by this configuration.** `terraform apply` currently changes
 nothing and costs nothing. DriveSense is **not deployed to Azure yet.**
 
 ## Files
 
-| File | Purpose |
-|---|---|
-| `main.tf` | Terraform/provider requirements, provider config, naming + tagging locals, list of planned resources |
-| `variables.tf` | Input variables with validation |
-| `outputs.tf` | Outputs |
-| `terraform.tfvars.example` | Example variable values (copy to `terraform.tfvars`, which is git-ignored) |
-| `.terraform.lock.hcl` | Provider version lock file, committed on purpose |
+| File                       | Purpose                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `main.tf`                  | Terraform/provider requirements, provider config, naming + tagging locals, list of planned resources |
+| `variables.tf`             | Input variables with validation                                                                      |
+| `outputs.tf`               | Outputs                                                                                              |
+| `terraform.tfvars.example` | Example variable values (copy to `terraform.tfvars`, which is git-ignored)                           |
+| `.terraform.lock.hcl`      | Provider version lock file, committed on purpose                                                     |
 
 ## Prerequisites (Windows)
 
