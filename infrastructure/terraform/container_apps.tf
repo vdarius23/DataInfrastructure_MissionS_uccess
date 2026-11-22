@@ -53,6 +53,13 @@ resource "azurerm_container_app" "backend" {
         secret_name = "database-url"
       }
 
+      # The API has a public address here, so writing over HTTP is switched off:
+      # devices send through IoT Hub. Invalid requests still get a 422 with the field name.
+      env {
+        name  = "HTTP_INGEST_ENABLED"
+        value = "false"
+      }
+
       liveness_probe {
         transport = "HTTP"
         port      = 8000
@@ -91,8 +98,8 @@ resource "azurerm_container_app" "frontend" {
 
       # The backend's public HTTPS address (express environments have no app-to-app
       # networking; the short name and the ".internal" name were tested and don't work).
-      # nginx sends this name as the Host header ($proxy_host, Lesson 6) and as TLS SNI
-      # (proxy_ssl_server_name), which is how Azure routes the request to the backend.
+      # nginx sends this name as the Host header ($proxy_host, Lesson 6), which is how
+      # Azure routes the request to the backend.
       env {
         name  = "BACKEND_URL"
         value = "https://${azurerm_container_app.backend.ingress[0].fqdn}"

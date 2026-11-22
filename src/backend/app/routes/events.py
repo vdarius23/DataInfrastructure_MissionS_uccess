@@ -22,11 +22,21 @@ AppSettings = Annotated[Settings, Depends(get_settings)]
     status_code=status.HTTP_201_CREATED,
     response_model=SensorEventRead,
     responses={
+        403: {"model": ErrorResponse, "description": "HTTP ingestion is disabled here"},
         409: {"model": ErrorResponse, "description": "An event with this event_id exists"},
         422: {"model": ErrorResponse, "description": "Validation failed"},
     },
 )
-def ingest_event(payload: SensorEventCreate, db: DbSession) -> SensorEventRead:
+def ingest_event(
+    payload: SensorEventCreate, db: DbSession, settings: AppSettings
+) -> SensorEventRead:
+    # Validation has already run at this point, so invalid data still gets a 422 with the field.
+    if not settings.http_ingest_enabled:
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "http_ingest_disabled",
+            "Sending readings over HTTP is disabled here. Devices send through Azure IoT Hub.",
+        )
     try:
         event = repository.create_event(db, payload)
     except repository.DuplicateEventError as exc:

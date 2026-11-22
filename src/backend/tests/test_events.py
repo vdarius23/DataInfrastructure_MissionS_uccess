@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import SensorEvent
 
 
@@ -196,3 +198,40 @@ def test_rejects_malformed_json(client: TestClient) -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+# --- HTTP ingestion switched off (as on Azure) ------------------------------------------------
+
+
+@pytest.fixture
+def http_ingest_disabled(client: TestClient):
+    """Run a test with HTTP_INGEST_ENABLED=false, as on Azure, then restore the settings."""
+    disabled = replace(get_settings(), http_ingest_enabled=False)
+    client.app.dependency_overrides[get_settings] = lambda: disabled
+    yield
+    client.app.dependency_overrides.pop(get_settings, None)
+
+
+def test_valid_event_is_refused_when_http_ingest_is_disabled(
+    client: TestClient, db_session: Session, http_ingest_disabled: None
+) -> None:
+    response = client.post("/api/events", json=make_event())
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "http_ingest_disabled"
+    assert db_session.scalars(select(SensorEvent)).all() == []
+
+
+def test_invalid_event_still_gets_422_when_http_ingest_is_disabled(
+    client: TestClient, http_ingest_disabled: None
+) -> None:
+    response = client.post("/api/events", json=make_event(latitude=95))
+
+    assert response.status_code == 422
+    assert error_fields(response) == ["body.latitude"]
+
+
+def test_reading_events_still_works_when_http_ingest_is_disabled(
+    client: TestClient, http_ingest_disabled: None
+) -> None:
+    assert client.get("/api/events").status_code == 200
