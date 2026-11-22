@@ -1,0 +1,79 @@
+name: Deploy to Azure
+
+# Continuous deployment: when "Release images" has published the images for a green commit on
+# main, roll that exact version out to the three Container Apps, then check the live app.
+# Terraform owns the infrastructure; this workflow only changes which image tag runs.
+on:
+  workflow_run:
+    workflows: [Release images]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy, e.g. sha-1a2b3c4 (roll back = an older tag)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-azure
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-drivesense-dev
+  IMAGE_REPOSITORY: ghcr.io/vdarius23/datainfrastructure_missions_uccess
+  DASHBOARD_URL: https://ca-drivesense-dev-web.purplegrass-72d50f53.francecentral.azurecontainerapps.io
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.image_tag || 'released images' }}
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Choose the image tag
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+          RELEASED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then TAG="$INPUT_TAG"; else TAG="sha-${RELEASED_SHA::7}"; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Deploying $TAG"
+
+      # Service principal limited to the DriveSense resource group (Contributor on that group only).
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Update the three Container Apps
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+          az containerapp update -g "$RESOURCE_GROUP" -n ca-drivesense-dev-api    --image "$IMAGE_REPOSITORY/backend:$TAG"  -o none
+          az containerapp update -g "$RESOURCE_GROUP" -n ca-drivesense-dev-ingest --image "$IMAGE_REPOSITORY/backend:$TAG"  -o none
+          az containerapp update -g "$RESOURCE_GROUP" -n ca-drivesense-dev-web    --image "$IMAGE_REPOSITORY/frontend:$TAG" -o none
+
+      - name: Wait until every app runs the new revision
+        run: |
+          for app in ca-drivesense-dev-api ca-drivesense-dev-ingest ca-drivesense-dev-web; do
+            for attempt in $(seq 1 30); do
+              latest=$(az containerapp show -g "$RESOURCE_GROUP" -n "$app" --query properties.latestRevisionName -o tsv)
+              ready=$(az containerapp show -g "$RESOURCE_GROUP" -n "$app" --query properties.latestReadyRevisionName -o tsv)
+              if [ "$latest" = "$ready" ]; then echo "$app: $ready is ready"; break; fi
+              if [ "$attempt" = 30 ]; then echo "$app: $latest did not become ready"; exit 1; fi
+              sleep 10
+            done
+          done
+
+      - name: Check the live app
+        run: |
+          for _ in $(seq 1 18); do
+            if curl -fsS "$DASHBOARD_URL/health" | tee /tmp/health.json | grep -q '"status":"ok"'; then
+              echo; echo "Live and healthy: $(cat /tmp/health.json)"
+              curl -fsS -o /dev/null -w "GET /api/trips -> %{http_code}\n" "$DASHBOARD_URL/api/trips?limit=1"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "The dashboard did not report healthy within 3 minutes"; exit 1
