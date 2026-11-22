@@ -32,6 +32,18 @@ def _get_csv(name: str, default: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    value = raw.strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"Environment variable {name} must be true or false, got {raw!r}")
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -39,6 +51,9 @@ class Settings:
     events_default_limit: int
     events_max_limit: int
     db_connect_timeout_seconds: int
+    # POST /api/events. On by default (tests, local runs); switched off on Azure, where
+    # devices send through IoT Hub and the API has a public address.
+    http_ingest_enabled: bool = True
 
 
 @lru_cache
@@ -55,4 +70,5 @@ def get_settings() -> Settings:
         events_default_limit=default_limit,
         events_max_limit=max_limit,
         db_connect_timeout_seconds=_get_positive_int("DB_CONNECT_TIMEOUT_SECONDS", 60),
+        http_ingest_enabled=_get_bool("HTTP_INGEST_ENABLED", True),
     )
