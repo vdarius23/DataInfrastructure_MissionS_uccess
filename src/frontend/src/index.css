@@ -213,3 +213,18 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Route map card keeps Leaflet's SVG layers separate from the chart SVG rules. */
+.route-card { grid-column: 1 / -1; padding: 14px 16px 12px; border: 1px solid #ffffff1c; border-radius: 9px; background: linear-gradient(150deg, #141517, #0b0c0e); }
+.route-map { height: 300px; margin-top: 8px; border-radius: 8px; overflow: hidden; background: #0b0c0e; }
+.route-line { fill: none; stroke: #e9e5de; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.route-start, .route-end, .route-event { stroke: #0b0c0e; stroke-width: 2; fill-opacity: 1; }
+.route-start { fill: #b8c7ad; }
+.route-end { fill: #e9e5de; }
+.route-event { fill: #d8333e; }
+.route-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.35); }
+/* Tailwind's base styles enlarge Leaflet's small attribution flag SVG. */
+.route-map .leaflet-attribution-flag { display: none !important; }
+.route-map .leaflet-control-attribution { background: #0b0c0ecc; color: #8a8a8d; font-size: 9px; }
+.route-map .leaflet-control-attribution a { color: #b5b5b8; }
+@media (max-width: 680px) { .route-map { height: 220px; } }
