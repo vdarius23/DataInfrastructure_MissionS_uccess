@@ -20,6 +20,11 @@ resource "azurerm_container_app" "backend" {
   revision_mode                = "Single"
   tags                         = local.common_tags
 
+  lifecycle {
+    # The Deploy workflow decides which image runs (sha-<commit>); Terraform owns the rest.
+    ignore_changes = [template[0].container[0].image]
+  }
+
   secret {
     name  = "database-url"
     value = local.database_url
@@ -76,6 +81,11 @@ resource "azurerm_container_app" "frontend" {
   revision_mode                = "Single"
   tags                         = local.common_tags
 
+  lifecycle {
+    # The Deploy workflow decides which image runs (sha-<commit>); Terraform owns the rest.
+    ignore_changes = [template[0].container[0].image]
+  }
+
   ingress {
     external_enabled = true
     target_port      = 80
@@ -117,6 +127,11 @@ resource "azurerm_container_app" "ingestor" {
   resource_group_name          = azurerm_resource_group.main.name
   revision_mode                = "Single"
   tags                         = local.common_tags
+
+  lifecycle {
+    # The Deploy workflow decides which image runs (sha-<commit>); Terraform owns the rest.
+    ignore_changes = [template[0].container[0].image]
+  }
 
   secret {
     name  = "database-url"
