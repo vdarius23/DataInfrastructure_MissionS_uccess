@@ -3,6 +3,7 @@ import { fetchTripDetail } from "../api/client";
 import { formatDuration, formatSigned, formatUtcTimestamp, metersPerSecondToKmh } from "../lib/format";
 import type { SensorEvent, TripDetail } from "../types";
 import { AlertIcon } from "./Icons";
+import { TripRouteMap } from "./TripRouteMap";
 
 const KIND_LABEL = {
   harsh_braking: "Harsh braking",
@@ -79,6 +80,7 @@ function Cockpit({ trip }: { trip: TripDetail }) {
         <span><small>HARSH BRAKING</small>{trip.harsh_braking_count}</span>
         <span><small>HARSH ACCEL.</small>{trip.harsh_acceleration_count}</span>
       </div>
+      <TripRouteMap samples={orderedSamples} events={trip.driving_events} deductions={trip.score_deductions} />
       {trip.driving_events.length > 0 && (
         <ol className="event-readouts">
           {trip.driving_events.map((event) => {
