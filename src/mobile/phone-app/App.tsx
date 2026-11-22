@@ -1,6 +1,7 @@
 import * as Location from "expo-location";
 import { useKeepAwake } from "expo-keep-awake";
 import { Accelerometer } from "expo-sensors";
+import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import mqtt from "mqtt";
 import { useEffect, useRef, useState } from "react";
@@ -10,6 +11,8 @@ const GRAVITY = 9.81; // expo-sensors reports acceleration in g; the API expects
 // A device SAS token from: az iot hub generate-sas-token --hub-name <hub> --device-id phone_01
 const DEFAULT_DEVICE_TOKEN = process.env.EXPO_PUBLIC_DEVICE_TOKEN ?? "";
 const IOTHUB_API_VERSION = "2021-04-12";
+// The token is remembered in the phone's encrypted storage (Android Keystore / iOS Keychain).
+const TOKEN_STORE_KEY = "drivesense.deviceToken";
 
 type Acceleration = { x: number; y: number; z: number };
 type Connection = "offline" | "connecting" | "streaming";
@@ -57,7 +60,8 @@ function parseDeviceToken(raw: string): DeviceIdentity | null {
 export default function App() {
   useKeepAwake(); // the app records only while it is open, so keep the screen on
 
-  const [tokenInput, setTokenInput] = useState(DEFAULT_DEVICE_TOKEN);
+  const [tokenInput, setTokenInput] = useState<string>(DEFAULT_DEVICE_TOKEN);
+  const [tokenSaved, setTokenSaved] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [connection, setConnection] = useState<Connection>("offline");
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
@@ -66,6 +70,30 @@ export default function App() {
   const identity = parseDeviceToken(tokenInput);
   const tokenExpired = identity !== null && identity.expiresAt.getTime() < Date.now();
   const canStart = identity !== null && !tokenExpired;
+
+  // On start-up, load the token this phone remembered last time (if no token is built in).
+  useEffect(() => {
+    if (DEFAULT_DEVICE_TOKEN) return;
+    SecureStore.getItemAsync(TOKEN_STORE_KEY)
+      .then((saved) => {
+        if (!saved) return;
+        setTokenInput((current) => current || saved);
+        setTokenSaved(true);
+      })
+      .catch(() => undefined); // no secure storage (e.g. web): the field simply starts empty
+  }, []);
+
+  function rememberToken(token: string) {
+    SecureStore.setItemAsync(TOKEN_STORE_KEY, token)
+      .then(() => setTokenSaved(true))
+      .catch(() => undefined);
+  }
+
+  function forgetToken() {
+    SecureStore.deleteItemAsync(TOKEN_STORE_KEY).catch(() => undefined);
+    setTokenSaved(false);
+    setTokenInput("");
+  }
 
   // While a session id is set, we are recording. Clearing it stops everything (cleanup below).
   useEffect(() => {
@@ -157,6 +185,8 @@ export default function App() {
       setSessionId(null);
       return;
     }
+    // A valid token was used to start a trip, so remember it for next time.
+    if (identity && !DEFAULT_DEVICE_TOKEN) rememberToken(identity.token);
     const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15); // 20261120T183000
     setStats(EMPTY_STATS);
     setSessionId(`trip_${stamp}_${randomHex(4)}`);
@@ -187,7 +217,13 @@ export default function App() {
       {tokenMessage && <Text style={styles.error}>{tokenMessage}</Text>}
       <Text style={styles.meta}>
         Device: {identity?.deviceId ?? "–"} · Stream: {connection}
+        {tokenSaved ? " · token saved on this phone" : ""}
       </Text>
+      {tokenSaved && !recording && (
+        <Pressable onPress={forgetToken} hitSlop={8}>
+          <Text style={styles.link}>Forget token</Text>
+        </Pressable>
+      )}
       {sessionId && <Text style={styles.meta}>Trip: {sessionId}</Text>}
 
       <Pressable
@@ -245,6 +281,7 @@ const styles = StyleSheet.create({
   },
   inputDisabled: { opacity: 0.6 },
   meta: { color: "#64748b", fontSize: 12, marginTop: 8 },
+  link: { color: "#38bdf8", fontSize: 12, marginTop: 6, textDecorationLine: "underline" },
   button: { marginTop: 28, borderRadius: 10, paddingVertical: 16, alignItems: "center" },
   buttonStart: { backgroundColor: "#0e7490" },
   buttonStop: { backgroundColor: "#be123c" },

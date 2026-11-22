@@ -34,7 +34,8 @@
         {
           "locationWhenInUsePermission": "DriveSense records your position once per second while a trip is running."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
