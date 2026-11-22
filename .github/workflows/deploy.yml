@@ -54,14 +54,20 @@ jobs:
           az containerapp update -g "$RESOURCE_GROUP" -n ca-drivesense-dev-ingest --image "$IMAGE_REPOSITORY/backend:$TAG"  -o none
           az containerapp update -g "$RESOURCE_GROUP" -n ca-drivesense-dev-web    --image "$IMAGE_REPOSITORY/frontend:$TAG" -o none
 
+      # Our "express" environment keeps one revision ("--latest") that is replaced in place and
+      # never fills latestReadyRevisionName, so we ask the revision itself: new image + healthy.
       - name: Wait until every app runs the new revision
         run: |
           for app in ca-drivesense-dev-api ca-drivesense-dev-ingest ca-drivesense-dev-web; do
             for attempt in $(seq 1 30); do
-              latest=$(az containerapp show -g "$RESOURCE_GROUP" -n "$app" --query properties.latestRevisionName -o tsv)
-              ready=$(az containerapp show -g "$RESOURCE_GROUP" -n "$app" --query properties.latestReadyRevisionName -o tsv)
-              if [ "$latest" = "$ready" ]; then echo "$app: $ready is ready"; break; fi
-              if [ "$attempt" = 30 ]; then echo "$app: $latest did not become ready"; exit 1; fi
+              rev=$(az containerapp show -g "$RESOURCE_GROUP" -n "$app" --query properties.latestRevisionName -o tsv)
+              state=$(az containerapp revision show -g "$RESOURCE_GROUP" -n "$app" --revision "$rev" \
+                --query "join(' ', [properties.template.containers[0].image, properties.healthState, properties.runningState])" -o tsv)
+              echo "$app: $state"
+              case "$state" in
+                *":$TAG Healthy Running"*) echo "$app is live on $TAG"; break ;;
+              esac
+              if [ "$attempt" = 30 ]; then echo "$app did not become healthy on $TAG"; exit 1; fi
               sleep 10
             done
           done
